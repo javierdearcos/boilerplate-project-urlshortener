@@ -28,71 +28,79 @@ app.get("/api/shorturl/:shortURL", (req, res) => {
   const shortURL = req.params.shortURL;
 
   if (!shortURL) {
-    res.status(400).json({ error: `Short URL ${shortURL} is invalid` });
+    res.json({ error: `Short URL ${shortURL} is invalid` });
     return;
   }
 
   urlRepository.findByShortURL(shortURL, (err, url) => {
     if (err) {
-      res.status(500).json({ error: `Error looking for ${shortURL}: ${err}` });
+      res.json({ error: `Error looking for ${shortURL}: ${err}` });
       return;
     }
 
     if (!url) {
-      res.status(404).json({ error: `Short URL ${shortURL} not found` });
+      res.json({ error: `Short URL ${shortURL} not found` });
       return;
     }
 
-    res.redirect(url.original);
+    res.redirect(301, url.original);
   });
 });
 
+// https://javierdearcos-url-shortener.herokuapp.com/?v=1640204778513
+
 app.post("/api/shorturl", (req, res) => {
-  
+
   const originalURL = req.body.url;
 
   if (!originalURL) {
-    res.status(400).json({ error: `Body is malformed: URL is required` });
+    res.json({ error: "invalid url" });
     return;
   }
 
-  const hostname = originalURL.replace(/https?:\/\//, "");
+  let url;
 
-  dns.lookup(hostname, (err) => {
+  try {
+    url = new URL(req.body.url);
+  } catch (error) {
+    res.json({ error: `Body is malformed: URL is required` });
+    return;
+  }
+
+  if (url.protocol != 'http:' && url.protocol != 'https:') {
+    res.json({ error: "invalid url" });
+    return;
+  }
+
+  dns.lookup(url.hostname, (err) => {
     if (err) {
-      res.status(400).json({ error: "invalid url" });
+      res.json({ error: "invalid url" });
       return;
     }
 
-    urlRepository.findByOriginalURL(originalURL, (_, existingURL) => {
+    urlRepository.findByOriginalURL(url.href, (_, existingURL) => {
       if (existingURL) {
-        res.status(200).json({
-          original_url: originalURL,
+        res.sjson({
+          original_url: existingURL.original,
           short_url: existingURL.short
         });
         return;
       }
 
-      urlRepository.createAndSaveURL(originalURL, (err, url) => {
+      urlRepository.createAndSaveURL(originalURL, (err, newURL) => {
         if (err) {
-          res.status(404).json({ error: `Can not create short url for ${originalURL}: ${err}` });
+          res.json({ error: `Can not create short url for ${originalURL}: ${err}` });
           return;
         }
-  
-        urlRepository.findById(url._id, (err, savedURL) => {
-          if (err) {
-            res.status(500).json({ error: `Error creating short url for ${originalURL}: ${err}` });
-            return;
-          }
-  
-          res.status(200).json({
-            original_url: originalURL,
-            short_url: url.short
-          });
+
+        res.json({
+          original_url: newURL.original,
+          short_url: newURL.short
         });
       });
     });
   });
+
 });
 
 app.listen(port, function() {
